@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N r2
+#PBS -q workq
+#PBS -l select=1:ncpus=2:ngpus=1:mem=24gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o /Data4/ai_25901336/Hack4hack/R2/pbs_job.log
+# Round 2 job: runs STEPS (a script in code/) on ONE MIG slice. Submit with submit2.sh.
+cd /Data4/ai_25901336/Hack4hack/R2/code || exit 1
+export PATH=/Data4/ai_25901336/Hack4hack/.venv/bin:$PATH PYTHONUNBUFFERED=1
+T=${NCPUS:-4}
+export N_THREADS=$T OMP_NUM_THREADS=$T OPENBLAS_NUM_THREADS=$T MKL_NUM_THREADS=$T NUMBA_NUM_THREADS=$T
+PICK=/Data4/ai_25901336/Hack4hack/pipeline/hpc_pick_mig.sh
+if [ "${GPU:-1}" = 0 ]; then MIG_UUID=none; fi
+# cluster rule: exactly ONE free MIG slice per user, never shared, never two at once (admins warned 27 Oct)
+if [ -z "$MIG_UUID" ]; then
+  for try in $(seq 1 60); do
+    MIG_UUID=$(MIN_MIG_MB=20000 bash $PICK)
+    [ -n "$MIG_UUID" ] && break
+    echo "$(date +%T) job $PBS_JOBID: no free GPU slice yet (try $try)" >> ../run.log
+    sleep 120
+  done
+fi
+[ -n "$MIG_UUID" ] || { echo "$(date +%T) job $PBS_JOBID: no GPU slice - giving up" >> ../run.log; exit 1; }
+if [ "$MIG_UUID" = none ]; then export CUDA_VISIBLE_DEVICES=""; else export CUDA_VISIBLE_DEVICES=$MIG_UUID; fi
+echo "=================== job $PBS_JOBID: $STEPS on ${MIG_UUID} with $T cores ($(date +%H:%M:%S))" >> ../run.log
+t0=$SECONDS
+bash "$STEPS" >> ../run.log 2>&1
+rc=$?
+echo "=================== job $PBS_JOBID finished, exit $rc, took $(((SECONDS - t0) / 60))m $(((SECONDS - t0) % 60))s ($(date +%H:%M:%S))" >> ../run.log

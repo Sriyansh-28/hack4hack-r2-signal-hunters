@@ -1,0 +1,8 @@
+# tested with: numpy 2.2.6, scipy 1.15.3, scikit-learn 1.7.2, lightgbm 4.x, torch 2.7.1+cu126
+numpy>=2.0
+scipy>=1.13
+pandas>=2.0
+pyarrow
+scikit-learn>=1.5
+lightgbm>=4.0
+torch>=2.3
