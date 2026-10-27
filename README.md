@@ -63,11 +63,29 @@ bash run_pl2.sh       # pseudo-labels from the best blend -> simb3, stack7_pl ->
 bash run_blend6.sh    # CPU, ~1 min: blends pushed toward the harsh simulation -> sub_r2_blend6/7/8.csv
 bash run_sim3.sh      # harsher PKS-like world (noise x1.35-1.75) in ../work_sim3 -> sim3a/sim3b, blend9-12
 bash run_blend13.sh   # CPU, ~1 min: clean : PKS-like = 1:1 with 3 clean stacks -> sub_r2_blend13/14.csv
+bash run_bias.sh      # CPU, ~1 min: blend8 + per-class decision bias (bias2.py, tuned on OOF, x0.5) -> sub_r2_blend15.csv
+python finetune_final.py --work ../data --probs ../work/sub_r2_stack6_pl_probs.npz ../work/sub_r2_stack_pl_probs.npz \
+  ../work_sim/sub_r2_sim1_probs.npz ../work_sim/sub_r2_sim2_probs.npz   # 50/50 linear + log-odds (1.2:0.8:0.8:1.2) -> sub_r2_blend16.csv
 ```
 
-**Final submission: `sub_r2_blend.csv`** (`run_blend.sh`, average of `stack6_pl` and `sim2`; public 0.8625, the best of
-our uploads). Later variants did not beat it: `sub_r2_blend3.csv` 0.8591 public; `stack7_pl` OOF 0.9105 vs
-`stack6_pl` 0.9110 (`run_blend5.sh` = stack7_pl + sim2 was therefore not run).
+**Final submission: `sub_r2_blend8.csv`** (`run_blend6.sh`, average of `stack6_pl`, `stack_pl`, `sim1` and `sim2`, i.e.
+clean-validated stacks : PKS-like stacks = 1 : 1; public **0.8639**, OOF 0.9036) and its calibrated 50/50 linear + log-odds
+refinement **`sub_r2_blend16.csv`** (`finetune_final.py`, weights 1.2 : 0.8 : 0.8 : 1.2; OOF **0.9049**). To reproduce, run the
+steps above in order up to `run_blend6.sh` / `finetune_final.py` (uses the stacks from `run_final.sh`, `run_v2s3.sh`,
+`run_x.sh`, `run_xpl.sh` and `run_sim.sh`). Earlier best: `sub_r2_blend.csv` (`run_blend.sh`, stack6_pl + sim2,
+public 0.8625). Variants that did not beat it: `sub_r2_blend14.csv` 0.8634 (3 clean : 3 PKS-like stacks incl. sim3b),
+`sub_r2_blend3.csv` 0.8591 (milder simulation), `sub_r2_blend6.csv` 0.8565 (stack6_pl : sim2 = 1 : 2);
+`sub_r2_blend15.csv` (decision bias, 0.9044 OOF) was not uploaded; `stack7_pl` OOF 0.9105 vs `stack6_pl` 0.9110.
+
+| Upload | Public macro-F1 |
+|---|---|
+| `sub_r2_stack_pl.csv` | 0.8585 |
+| `sub_r2_stack6_pl.csv` | 0.8576 |
+| `sub_r2_blend.csv` | 0.8625 |
+| `sub_r2_blend3.csv` | 0.8591 |
+| `sub_r2_blend6.csv` | 0.8565 |
+| **`sub_r2_blend8.csv`** | **0.8639** |
+| `sub_r2_blend14.csv` | 0.8634 |
 
 ### Domain shift (GBT → PKS) and the PKS-like pipeline
 `diag.py` showed: PKS raw noise is 1.31× GBT (signals look ~0.7× as strong after normalisation; the 90th percentile of
@@ -80,5 +98,7 @@ On the NITJ HPC every step goes through PBS: `bash submit2.sh <script> <walltime
 (`job2.pbs` takes one free MIG slice). Seeds are fixed; GPU kernels can still make tiny run-to-run differences.
 
 ## Files
-`common2.py` paths/classes/metric · `prep2.py` cleaning · `feats2.py` features · `gbm2.py` LightGBM ·
-`cnn2.py` CNN · `ens2.py` weighted blend · `stack2.py` stacker · `run_*.sh` steps · `job2.pbs`, `submit2.sh` PBS.
+`common2.py` paths/classes/metric · `prep2.py` cleaning · `feats2.py`, `feats3.py` physics & OFF-bandpass features ·
+`gbm2.py` LightGBM · `cnn2.py` CNN · `ens2.py` weighted blend · `stack2.py` stacker · `blend.py` cross-domain blend ·
+`bias2.py`, `finetune_final.py` OOF/log-odds post-processing · `diag*.py`, `xval.py` domain diagnostics ·
+`run_*.sh` step scripts · `job2.pbs`, `submit2.sh` PBS.
