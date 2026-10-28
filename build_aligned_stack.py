@@ -302,18 +302,22 @@ def main():
         sim_v4 = v4 and sim_v3 and (PULL / 'sim1_preds' / 'cnn_v4pl.npz').exists()   # Phase 3 sim cnn4 -> blend32
         s1 = sim_v4 and all((PULL / f / 'cnn_v4pls1.npz').exists() for f in ('work_preds', 'sim1_preds'))  # Phase 4 seed 1
         s2 = s1 and all((PULL / f / 'cnn_v4pls2.npz').exists() for f in ('work_preds', 'sim1_preds'))  # Phase 5 seed 2
-        b29 = ('sub_r2_blend34' if s2 else 'sub_r2_blend33' if s1 else 'sub_r2_blend32' if sim_v4 else 'sub_r2_blend31' if v4
+        p33w, p33s = [s1 and (PULL / f / 'cnn_v4pl33.npz').exists() for f in ('work_preds', 'sim1_preds')]  # Phase 6
+        if p33w or p33s:
+            s2 = False      # blend34 (with the weaker seed 2) < blend33 on OOF -> blend35 = blend33 models + cnn_v4pl33
+        b29 = ('sub_r2_blend35' if p33w and p33s else 'sub_r2_blend35s' if p33s else 'sub_r2_blend34' if s2 else 'sub_r2_blend33' if s1 else 'sub_r2_blend32' if sim_v4 else 'sub_r2_blend31' if v4
                else 'sub_r2_blend30' if sim_v3 else 'sub_r2_blend29')
         log(f'=== STEP 5: Phase 1/2 stacks with gbm_x5 + feats5 -> {b29} ===')
         s10_oof, s10_te, s10_lo, s10_lt = run_aligned_stack(PULL / 'work_preds', clean_models + ['gbm_x5'] + (['cnn_v4pl'] if v4 else [])
-                                                            + (['cnn_v4pls1'] if s1 else []) + (['cnn_v4pls2'] if s2 else []),
+                                                            + (['cnn_v4pls1'] if s1 else []) + (['cnn_v4pls2'] if s2 else [])
+                                                            + (['cnn_v4pl33'] if p33w else []),
                                                             y, folds, 'sub_r2_stack11_pl_aligned' if v4 else 'sub_r2_stack10_pl_aligned',
                                                             feats5=True)
         sim_ok = (PULL / 'sim1_preds' / 'gbm_x5.npz').exists() and has_feats5(PULL / 'sim1_preds')
         if sim_ok:
             s4b_oof, s4b_te, _, _ = run_aligned_stack(
                 PULL / 'sim1_preds', sim_models + ['gbm_x5'] + (['cnn_v3pl'] if sim_v3 else []) + (['cnn_v4pl'] if sim_v4 else [])
-                + (['cnn_v4pls1'] if s1 else []) + (['cnn_v4pls2'] if s2 else []),
+                + (['cnn_v4pls1'] if s1 else []) + (['cnn_v4pls2'] if s2 else []) + (['cnn_v4pl33'] if p33s else []),
                 y, folds, 'sub_r2_sim6_aligned' if sim_v4 else 'sub_r2_sim5_aligned' if sim_v3 else 'sub_r2_sim4b_aligned', feats5=True)
         else:
             log('sim1_preds has no gbm_x5/feats5 yet -> blend29 keeps sim4_aligned for the PKS-sim world')
@@ -326,7 +330,7 @@ def main():
         b29_oof, b29_te = blend_lin_geom([s10_al, s10_lg, s6, spl, s4b_al, sim2, sim1], [1.0, 1.0, 0.7, 0.9, 1.4, 0.8, 0.6])
         inspect_sub(f'{b29} (PHASE1)', b29_oof, b29_te, y, b16)
         log(f'{b29} labels different from {out_tag}: {(b29_te.argmax(1) != b27_te.argmax(1)).sum()}')
-        for prev in ('sub_r2_blend29', 'sub_r2_blend30', 'sub_r2_blend31', 'sub_r2_blend32', 'sub_r2_blend33'):
+        for prev in ('sub_r2_blend29', 'sub_r2_blend30', 'sub_r2_blend31', 'sub_r2_blend32', 'sub_r2_blend33', 'sub_r2_blend34', 'sub_r2_blend35s'):
             if prev != b29 and (PULL / f'{prev}_probs.npz').exists():
                 log(f'{b29} labels different from {prev}: '
                     f'{(b29_te.argmax(1) != np.load(PULL / f"{prev}_probs.npz")["test"].argmax(1)).sum()}')
