@@ -94,7 +94,7 @@ Earlier best: `sub_r2_blend8.csv` (public 0.8639). Variants that did not beat it
 | `cnn4.py` (`cnn_v4pl`) | per panel `norm` + `Z_offref` (OFF-referenced scintillation view) + `Z_diff` (panel − neighbours) channels, shared PKS-drift / noise / flip augmentation, BiGRU over the 96 (panel, row) steps, feats2-5 tabular branch, pseudo-labels | **0.8828** |
 | `cnn4.py` seeds 1, 2 (`cnn_v4pls1/2`) | same net, new seeds (variance reduction for the stacker); work_sim → `sim6` | s1: 0.8855 (work), 0.8529 (work_sim) |
 | `stack2.py` → `stack11_pl` | logistic + LightGBM stacker over 12 models + feats2-5 meta features | 0.9205 |
-| `build_aligned_stack.py` | test features quantile-aligned to train (`damped_quantile_align`, α 0.85); non-pseudo-labelled models' test log-probs aligned to the PKS-adapted ones (`align_model_test_logits`); 50/50 linear + log-odds blend of clean and PKS-like stacks; **pre-upload gate** on PKS class counts | blend29 0.9145 · blend31 0.9155 · blend32 0.9168 · blend33 0.9165 |
+| `build_aligned_stack.py` | test features quantile-aligned to train (`damped_quantile_align`, α 0.85); non-pseudo-labelled models' test log-probs aligned to the PKS-adapted ones (`align_model_test_logits`); 50/50 linear + log-odds blend of clean and PKS-like stacks; **pre-upload gate** on PKS class counts | blend29 0.9145 (public 0.8766) · blend31 0.9155 · **blend32 0.9168 (public 0.8802)** · blend33 0.9165 · blend34 0.9153 |
 
 ```bash
 bash run_overnight1.sh   # feats4 + gbm_x4 + stack8_pl, sim4, cnn3 (cnn_v3pl)
