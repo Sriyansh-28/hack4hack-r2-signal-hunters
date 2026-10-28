@@ -68,12 +68,9 @@ python finetune_final.py --work ../data --probs ../work/sub_r2_stack6_pl_probs.n
   ../work_sim/sub_r2_sim1_probs.npz ../work_sim/sub_r2_sim2_probs.npz   # 50/50 linear + log-odds (1.2:0.8:0.8:1.2) -> sub_r2_blend16.csv
 ```
 
-**Final submission: `sub_r2_blend8.csv`** (`run_blend6.sh`, average of `stack6_pl`, `stack_pl`, `sim1` and `sim2`, i.e.
-clean-validated stacks : PKS-like stacks = 1 : 1; public **0.8639**, OOF 0.9036) and its calibrated 50/50 linear + log-odds
-refinement **`sub_r2_blend16.csv`** (`finetune_final.py`, weights 1.2 : 0.8 : 0.8 : 1.2; OOF **0.9049**). To reproduce, run the
-steps above in order up to `run_blend6.sh` / `finetune_final.py` (uses the stacks from `run_final.sh`, `run_v2s3.sh`,
-`run_x.sh`, `run_xpl.sh` and `run_sim.sh`). Earlier best: `sub_r2_blend.csv` (`run_blend.sh`, stack6_pl + sim2,
-public 0.8625). Variants that did not beat it: `sub_r2_blend14.csv` 0.8634 (3 clean : 3 PKS-like stacks incl. sim3b),
+**Final submission: `sub_r2_blend16.csv`** (`finetune_final.py`, 50/50 linear + log-odds consensus of the 4 flagship
+stacks: `stack6_pl`, `stack_pl`, `sim1`, `sim2` with weights 1.2 : 0.8 : 0.8 : 1.2; public **0.8645**, OOF **0.9049**).
+Earlier best: `sub_r2_blend8.csv` (public 0.8639). Variants that did not beat it: `sub_r2_blend14.csv` 0.8634 (3 clean : 3 PKS-like stacks incl. sim3b),
 `sub_r2_blend3.csv` 0.8591 (milder simulation), `sub_r2_blend6.csv` 0.8565 (stack6_pl : sim2 = 1 : 2);
 `sub_r2_blend15.csv` (decision bias, 0.9044 OOF) was not uploaded; `stack7_pl` OOF 0.9105 vs `stack6_pl` 0.9110.
 
@@ -84,8 +81,30 @@ public 0.8625). Variants that did not beat it: `sub_r2_blend14.csv` 0.8634 (3 cl
 | `sub_r2_blend.csv` | 0.8625 |
 | `sub_r2_blend3.csv` | 0.8591 |
 | `sub_r2_blend6.csv` | 0.8565 |
-| **`sub_r2_blend8.csv`** | **0.8639** |
+| `sub_r2_blend8.csv` | 0.8639 |
 | `sub_r2_blend14.csv` | 0.8634 |
+| **`sub_r2_blend16.csv`** | **0.8645** |
+
+### Extended round (28 Oct): physics features v4/v5, CNN v3/v4, covariate-aligned stacking
+| Step | What | OOF macro-F1 |
+|---|---|---|
+| `feats4.py` + `gbm_x4` | 161-slope fine ETI track, pooled track, collinearity / trap checks, RFI-masked patchiness, glitch rows | 0.8448 (gbm_x 0.8211) |
+| `feats5.py` + `gbm_x5` | Brzycki et al. 2023-style OFF-referenced, row-scrubbed, degree-3-detrended dynamic spectrum: 2D ACF at Δt ≥ 1 (immune to 1-row glitches), secondary spectrum (2D FFT) bands, flux AR(1); bilinear sub-pixel 3-of-3 / 48-row coherent / 2-of-3 ETI track search | **0.8630** |
+| `cnn3.py` (`cnn_v3pl`) | ResNet-SE + SpecAugment + feats4 + pseudo-labels | 0.8715 |
+| `cnn4.py` (`cnn_v4pl`) | per panel `norm` + `Z_offref` (OFF-referenced scintillation view) + `Z_diff` (panel − neighbours) channels, shared PKS-drift / noise / flip augmentation, BiGRU over the 96 (panel, row) steps, feats2-5 tabular branch, pseudo-labels | **0.8828** |
+| `cnn4.py` seeds 1, 2 (`cnn_v4pls1/2`) | same net, new seeds (variance reduction for the stacker); work_sim → `sim6` | s1: 0.8855 (work), 0.8529 (work_sim) |
+| `stack2.py` → `stack11_pl` | logistic + LightGBM stacker over 12 models + feats2-5 meta features | 0.9205 |
+| `build_aligned_stack.py` | test features quantile-aligned to train (`damped_quantile_align`, α 0.85); non-pseudo-labelled models' test log-probs aligned to the PKS-adapted ones (`align_model_test_logits`); 50/50 linear + log-odds blend of clean and PKS-like stacks; **pre-upload gate** on PKS class counts | blend29 0.9145 · blend31 0.9155 · blend32 0.9168 · blend33 0.9165 |
+
+```bash
+bash run_overnight1.sh   # feats4 + gbm_x4 + stack8_pl, sim4, cnn3 (cnn_v3pl)
+bash run_phase1.sh       # feats5 + gbm_x5 in work and work_sim, stack10_pl, sim4b, cnn3 in work_sim (sim5)
+bash run_phase2.sh       # cnn4 in work (cnn_v4pl) -> stack11_pl
+bash run_phase3.sh       # cnn4 in work_sim -> sim6
+bash run_phase4.sh       # cnn4 seed 1 in work_sim and work (cnn_v4pls1)
+bash run_phase5.sh       # cnn4 seed 2 in work_sim and work (cnn_v4pls2)
+python build_aligned_stack.py   # laptop, on the pulled preds in ../work_pull -> sub_r2_blend26 ... blend34
+```
 
 ### Domain shift (GBT → PKS) and the PKS-like pipeline
 `diag.py` showed: PKS raw noise is 1.31× GBT (signals look ~0.7× as strong after normalisation; the 90th percentile of

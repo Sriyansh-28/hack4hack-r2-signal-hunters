@@ -45,14 +45,40 @@ def slope_scale(work, split):
     return float(r.median() / (18.25 / 2.79))
 
 
-def load_feats(work, extra=False):
-    """Step-3 features (+ the feats3.py extras if extra) for train and test, same columns."""
+def damped_quantile_align(src_df, ref_df, alpha=0.85):
+    """Align each feature column of src_df (PKS test) toward ref_df (train) empirical quantiles.
+    Removes telescope receiver-noise scaling (~0.70x SNR) and 1-row broadband glitch offset
+    (disp_on_max median 8.95 -> 2.96) while leaving (1 - alpha) slack for label-mix differences."""
+    out = pd.DataFrame(index=src_df.index, columns=src_df.columns, dtype=np.float32)
+    ranks = np.linspace(0.0, 100.0, len(src_df))
+    for col in src_df.columns:
+        s = np.nan_to_num(src_df[col].values.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+        r = np.nan_to_num(ref_df[col].values.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+        order = np.argsort(s, kind='mergesort')
+        mapped = np.percentile(r, ranks).astype(np.float32)
+        aligned = np.empty_like(s)
+        aligned[order] = alpha * mapped + (1.0 - alpha) * s[order]
+        out[col] = aligned
+    return out
+
+
+def load_feats(work, extra=False, feats4=False, feats5=False, align_test=True):
+    """Features for train and test: feats2 + feats3 (if extra) + feats4 (if feats4) + feats5 (if feats5)."""
     work = Path(work)
     tr, te = pd.read_parquet(work / 'feats_train.parquet'), pd.read_parquet(work / 'feats_test.parquet')
     if extra:
         tr = pd.concat([tr, pd.read_parquet(work / 'feats3_train.parquet')], axis=1)
         te = pd.concat([te, pd.read_parquet(work / 'feats3_test.parquet')], axis=1)
-    return tr, te[tr.columns]
+    if feats4 and (work / 'feats4_train.parquet').exists():
+        tr = pd.concat([tr, pd.read_parquet(work / 'feats4_train.parquet')], axis=1)
+        te = pd.concat([te, pd.read_parquet(work / 'feats4_test.parquet')], axis=1)
+    if feats5 and (work / 'feats5_train.parquet').exists():
+        tr = pd.concat([tr, pd.read_parquet(work / 'feats5_train.parquet')], axis=1)
+        te = pd.concat([te, pd.read_parquet(work / 'feats5_test.parquet')], axis=1)
+    te = te[tr.columns]
+    if align_test:
+        te = damped_quantile_align(te, tr, alpha=0.85)
+    return tr, te
 
 
 def macro_f1(y, p, n=len(CLASSES)):

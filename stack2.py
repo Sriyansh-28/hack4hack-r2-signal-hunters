@@ -16,6 +16,11 @@ META = ['track_clean', 'track_clean_drift', 'track_on_min', 'track_off_max', 'li
         'persist_all6', 'disp_on_max', 'patch_diff', 'steep_max']
 META3 = ['exc_area_diff', 'exc_max_on_min', 'tex4x8_diff', 'tex8x16_diff', 'hot4x8_diff', 'tfit_ratio_min',
          'tfit_dslope_max', 'tfit_off_near']                     # feats3.py (--extra)
+META4 = ['ftrack_clean_drift', 'ftrack3_clean_drift', 'ftrack_on_ratio', 'trap_collinear_err', 'trap_slope_match',
+         'persist_5of6', 'cpat4x8_diff', 'cpat8x16_diff', 'scint_corr_mean']  # feats4.py (--feats4)
+META5 = ['subpx_clean_min_drift', 'subpx_clean_mean_drift', 'subpx_clean_2of3_drift', 'dexc8_max_diff',
+         'dspec_on_corr_mean', 'acf_t1_f4_diff', 'acf_t2_f8_diff', 'sec_scint_psd_diff',
+         'sec_dcfreq_psd_diff', 'ts_flux_ar1_diff']                           # feats5.py (--feats5)
 
 
 def main():
@@ -23,19 +28,47 @@ def main():
     p.add_argument('--preds', nargs='*', default=None)
     p.add_argument('--out', default='sub_r2_stack')
     p.add_argument('--extra', action='store_true', help='also give the LightGBM stacker the feats3.py features')
+    p.add_argument('--feats4', action='store_true', help='also give the LightGBM stacker the feats4.py features')
+    p.add_argument('--feats5', action='store_true', help='also give the LightGBM stacker the feats5.py features')
     a = p.parse_args()
     work = Path(a.work)
     files = sorted((work / 'preds').glob('*.npz'))
     if a.preds:
         files = [f for f in files if f.stem in a.preds]
+    stems = {f.stem for f in files}
+    if 'gbm_x4' in stems or 'gbm_x' in stems:
+        files = [f for f in files if f.stem not in ('gbm', 'cnn')]
     d = [np.load(f) for f in files]
-    log('models: ' + ' '.join(f.stem for f in files))
-    X = np.log(np.clip(np.concatenate([x['oof'] for x in d], 1), 1e-7, 1))
-    Xt = np.log(np.clip(np.concatenate([x['test'] for x in d], 1), 1e-7, 1))
+    names = [f.stem for f in files]
+    log('models: ' + ' '.join(names))
+    oof_logs = [np.log(np.clip(x['oof'], 1e-7, 1.0)) for x in d]
+    te_logs = [np.log(np.clip(x['test'], 1e-7, 1.0)) for x in d]
+    ref_idx = [i for i, m in enumerate(names) if m in ('cnn_v2notab', 'cnn_v2pl', 'cnn_v2xpl', 'cnn_v3pl')]
+    if not ref_idx:
+        ref_idx = [i for i, m in enumerate(names) if 'pl' in m]
+    if ref_idx:
+        ref_oof_mu = np.mean([oof_logs[i].mean(axis=0) for i in ref_idx], axis=0)
+        ref_te_mu = np.mean([te_logs[i].mean(axis=0) for i in ref_idx], axis=0)
+        ref_oof_sd = np.mean([oof_logs[i].std(axis=0) for i in ref_idx], axis=0)
+        ref_te_sd = np.mean([te_logs[i].std(axis=0) for i in ref_idx], axis=0)
+        aligned_te = []
+        for i, m in enumerate(names):
+            Xo, Xt_i = oof_logs[i], te_logs[i]
+            if i in ref_idx:
+                aligned_te.append(Xt_i)
+                continue
+            t_mu = Xo.mean(axis=0) + (ref_te_mu - ref_oof_mu)
+            t_sd = Xo.std(axis=0) * (ref_te_sd / np.maximum(ref_oof_sd, 1e-6))
+            Xt_cal = t_mu + (Xt_i - Xt_i.mean(axis=0)) * (t_sd / np.maximum(Xt_i.std(axis=0), 1e-6))
+            Xt_cal -= np.log(np.exp(Xt_cal).sum(axis=1, keepdims=True))
+            aligned_te.append(Xt_cal.astype(np.float32))
+        te_logs = aligned_te
+    X = np.concatenate(oof_logs, axis=1)
+    Xt = np.concatenate(te_logs, axis=1)
     y = labels(work)
     folds = np.load(work / 'folds.npy')
-    ftr, fte = load_feats(work, a.extra)
-    meta = [c for c in META + (META3 if a.extra else []) if c in ftr.columns]
+    ftr, fte = load_feats(work, a.extra, a.feats4, a.feats5)
+    meta = [c for c in META + (META3 if a.extra else []) + (META4 if a.feats4 else []) + (META5 if a.feats5 else []) if c in ftr.columns]
     Xg, Xgt = np.hstack([X, ftr[meta].values]), np.hstack([Xt, fte[meta].values])
     K = len(CLASSES)
     lo, lt, go, gt = (np.zeros((len(y), K)), np.zeros((len(Xt), K)), np.zeros((len(y), K)), np.zeros((len(Xt), K)))
