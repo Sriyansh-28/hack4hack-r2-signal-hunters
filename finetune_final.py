@@ -29,6 +29,8 @@ def save_and_check(test_pred, base_pred, work, out_name):
 def main():
     p = parser(__doc__)
     p.add_argument('--probs', nargs='+', required=True)
+    p.add_argument('--out_linG', default='sub_r2_blend16')
+    p.add_argument('--save_probs', default='')
     a = p.parse_args()
     work = Path(a.work)
     y = labels(work)
@@ -36,15 +38,14 @@ def main():
     oofs = [x['oof'] for x in d]
     tests = [x['test'] for x in d]
 
-    # Baseline blend8 (linear average, weights 1.25, 0.75, 0.75, 1.25 vs 1, 1, 1, 1)
+    # Baseline linear average
     oof_lin = sum(oofs) / len(oofs)
     test_lin = sum(tests) / len(tests)
     base_pred = test_lin.argmax(1)
-    log(f'blend8 linear OOF macro-F1: {macro_f1(y, oof_lin.argmax(1))[0]:.4f}')
+    log(f'linear OOF macro-F1: {macro_f1(y, oof_lin.argmax(1))[0]:.4f}')
 
-    # 1. blend16: Log-probability (geometric) + linear 50/50 hybrid with slight extra weight (1.2 : 0.8 : 0.8 : 1.2)
-    # on the strongest clean (stack6_pl) and strongest harsh-sim (sim2) stacks
-    w = [1.2, 0.8, 0.8, 1.2]
+    # 1. Log-probability (geometric) + linear 50/50 hybrid with slight extra weight (1.2 : 0.8 : 0.8 : 1.2)
+    w = [1.2, 0.8, 0.8, 1.2] if len(oofs) == 4 else [1.0] * len(oofs)
     oof_wlin = sum(wi * o for wi, o in zip(w, oofs)) / sum(w)
     test_wlin = sum(wi * t for wi, t in zip(w, tests)) / sum(w)
     oof_geo = np.exp(sum(wi * np.log(np.clip(o, 1e-6, 1)) for wi, o in zip(w, oofs)) / sum(w))
@@ -54,8 +55,11 @@ def main():
 
     oof_16 = 0.5 * oof_wlin + 0.5 * oof_geo
     test_16 = 0.5 * test_wlin + 0.5 * test_geo
-    log(f'blend16 (50/50 linear + log-odds) OOF macro-F1: {macro_f1(y, oof_16.argmax(1))[0]:.4f}')
-    save_and_check(test_16.argmax(1), base_pred, work, 'sub_r2_blend16')
+    log(f'{a.out_linG} (50/50 linear + log-odds) OOF macro-F1: {macro_f1(y, oof_16.argmax(1))[0]:.4f}')
+    save_and_check(test_16.argmax(1), base_pred, work, a.out_linG)
+    if a.save_probs:
+        np.savez(a.save_probs, oof=oof_16.astype(np.float32), test=test_16.astype(np.float32))
+        log(f'saved probabilities to {a.save_probs}')
 
     # 2. blend18: 100% log-odds (geometric) average with 1.25 : 0.75 : 0.75 : 1.25 weights (strictly 1:1 clean:harsh)
     w18 = [1.25, 0.75, 0.75, 1.25]
